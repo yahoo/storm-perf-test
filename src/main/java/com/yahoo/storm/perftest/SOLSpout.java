@@ -53,10 +53,9 @@ public class SOLSpout extends BaseRichSpout {
     _messages = new String[differentMessages];
     for(int i = 0; i < differentMessages; i++) {
       StringBuilder sb = new StringBuilder(_sizeInBytes);
-      //This is a hack, and I don't know for sure the size of the messages
-      //that are sent.  Just a rough guess, because it is UCS2, so 2 bytes
-      // per character.
-      for(int j = 0; j < (_sizeInBytes/2) + 1; j++) {
+      //Even though java encodes strings in UCS2, the serialized version sent by the tuples
+      // is UTF8, so it should be a single byte
+      for(int j = 0; j < _sizeInBytes; j++) {
         sb.append(_rand.nextInt(9));
       }
       _messages[i] = sb.toString();
