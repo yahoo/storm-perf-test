@@ -18,8 +18,8 @@ package com.yahoo.storm.perftest;
 
 import java.util.Map;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
@@ -38,9 +38,10 @@ import backtype.storm.generated.TopologySummary;
 import backtype.storm.generated.TopologyInfo;
 import backtype.storm.generated.ExecutorSummary;
 import backtype.storm.generated.ExecutorStats;
+import backtype.storm.generated.SpoutStats;
 
 public class Main {
-  private static final Log LOG = LogFactory.getLog(Main.class);
+  private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
   @Option(name="--help", aliases={"-h"}, usage="print help message")
   private boolean _help = false;
@@ -104,9 +105,8 @@ public class Main {
     long lastTime = 0;
   }
 
-
   public void metrics(Nimbus.Client client, int size, int poll, int total) throws Exception {
-    System.out.println("status\ttopologies\ttotalSlots\tslotsUsed\ttotalExecutors\texecutorsWithMetrics\ttime\ttime-diff ms\ttransferred\tthroughput (MB/s)");
+    System.out.println("status\ttopologies\ttotalSlots\tslotsUsed\ttotalExecutors\texecutorsWithMetrics\ttime\ttime-diff ms\ttransferred\tthroughput (MB/s)\ttotal Failed");
     MetricsState state = new MetricsState();
     long pollMs = poll * 1000;
     long now = System.currentTimeMillis();
@@ -166,6 +166,7 @@ public class Main {
     long totalTransferred = 0;
     int totalExecutors = 0;
     int executorsWithMetrics = 0;
+    int totalFailed = 0;
     for (TopologySummary ts: summary.get_topologies()) {
       String id = ts.get_id();
       TopologyInfo info = client.getTopologyInfo(id);
@@ -173,6 +174,19 @@ public class Main {
         ExecutorStats stats = es.get_stats();
         totalExecutors++;
         if (stats != null) {
+          if (stats.get_specific().is_set_spout()) {
+            SpoutStats ss = stats.get_specific().get_spout();
+            Map<String, Long> failedMap = ss.get_failed().get(":all-time");
+            if (failedMap != null) {
+              for (String key: failedMap.keySet()) {
+                Long tmp = failedMap.get(key);
+                if (tmp != null) {
+                  totalFailed += tmp;
+                }
+              }
+            }
+          }
+
           Map<String,Map<String,Long>> transferred = stats.get_transferred();
           if ( transferred != null) {
             Map<String, Long> e2 = transferred.get(":all-time");
@@ -191,7 +205,7 @@ public class Main {
     long transferredDiff = totalTransferred - state.transferred;
     state.transferred = totalTransferred;
     double throughput = (transferredDiff == 0 || time == 0) ? 0.0 : (transferredDiff * size)/(1024.0 * 1024.0)/(time/1000.0);
-    System.out.println(message+"\t"+numTopologies+"\t"+totalSlots+"\t"+totalUsedSlots+"\t"+totalExecutors+"\t"+executorsWithMetrics+"\t"+now+"\t"+time+"\t"+transferredDiff+"\t"+throughput);
+    System.out.println(message+"\t"+numTopologies+"\t"+totalSlots+"\t"+totalUsedSlots+"\t"+totalExecutors+"\t"+executorsWithMetrics+"\t"+now+"\t"+time+"\t"+transferredDiff+"\t"+throughput+"\t"+totalFailed);
     if ("WAITING".equals(message)) {
       //System.err.println(" !("+totalUsedSlots+" > 0 && "+slotsUsedDiff+" == 0 && "+totalExecutors+" > 0 && "+executorsWithMetrics+" >= "+totalExecutors+")");
     }
